@@ -13,7 +13,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
-    <Version>0.0.1</Version>
+    <Version>1.0.0</Version>
     <Product>WinDynamicNotch</Product>
     <AssemblyTitle>WinDynamicNotch</AssemblyTitle>
     <Description>Медиавиджет в стиле Dynamic Island для Windows</Description>
