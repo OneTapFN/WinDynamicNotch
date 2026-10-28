@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -16,12 +17,25 @@ public partial class MainWindow : Window
     private const double CompactWindowHeight = 70;
     private const double ExpandedWindowHeight = 558;
 
+    /// <summary>Диаметр кружка-«камеры», из которого выезжает панель.</summary>
+    private const double CameraCircleSize = 34;
+
+    private const double CardCornerRadius = 22;
+    private const double ShadowCornerRadius = 24;
+
+    /// <summary>Тень на 2 DIP больше карточки с каждой стороны (margin 10 против 12).</summary>
+    private const double ShadowOverhang = 4;
+
     // Зона появления: полоса сверху по центру экрана (значения в DIP).
     private const double HotZoneHalfWidth = 180;
     private const double HotZoneHeight = 26;
 
     private const string PlayGlyph = "\uE768";
     private const string PauseGlyph = "\uE769";
+
+    /// <summary>Обычный и «подсвеченный» цвет ободка карточки (кружок-камера ярче).</summary>
+    private static readonly Color IdleBorderColor = Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF);
+    private static readonly Color ActiveBorderColor = Color.FromArgb(0x99, 0xFF, 0xFF, 0xFF);
 
     /// <summary>Сколько панель висит после того, как курсор ушёл с неё.</summary>
     private static readonly TimeSpan HideDelay = TimeSpan.FromMilliseconds(900);
@@ -39,7 +53,8 @@ public partial class MainWindow : Window
     private readonly KeyboardHook _keyboardHook;
 
     private readonly ScaleTransform _rootScale = new(1, 1);
-    private readonly TranslateTransform _rootTranslate = new();
+    private readonly TranslateTransform _contentTranslate = new();
+    private readonly SolidColorBrush _cardBorderBrush = new(IdleBorderColor);
     private readonly ScaleTransform _artScale = new(1, 1);
     private readonly TranslateTransform _artTranslate = new();
     private readonly TranslateTransform _titleTranslate = new();
@@ -163,12 +178,17 @@ public partial class MainWindow : Window
     {
         var rootGroup = new TransformGroup();
         rootGroup.Children.Add(_rootScale);
-        rootGroup.Children.Add(_rootTranslate);
         RootGrid.RenderTransform = rootGroup;
         RootGrid.RenderTransformOrigin = new Point(0.5, 0);
 
         RootGrid.Opacity = 0;
         RootGrid.IsHitTestVisible = false;
+
+        CardContent.RenderTransform = _contentTranslate;
+        CardContent.RenderTransformOrigin = new Point(0.5, 0.5);
+
+        // Свой (не «замороженный») браш, чтобы можно было анимировать цвет ободка.
+        Card.BorderBrush = _cardBorderBrush;
 
         var artGroup = new TransformGroup();
         artGroup.Children.Add(_artScale);
@@ -320,30 +340,94 @@ public partial class MainWindow : Window
         RootGrid.IsHitTestVisible = true;
         SetClickThrough(false);
 
+        // Окно всегда свёрнуто по высоте, даже если предыдущее сворачивание не успело доехать.
+        BeginAnimation(HeightProperty, null);
+        Height = CompactWindowHeight;
+
+        var cardWidth = CardSlotWidth();
+        var cardHeight = CardSlotHeight();
+
+        // Стартовое состояние: маленький кружок по центру сверху — «камера».
+        ResetCardShape();
+        Card.Width = CameraCircleSize;
+        Card.Height = CameraCircleSize;
+
+        CardShadow.Width = CameraCircleSize + ShadowOverhang;
+        CardShadow.Height = CameraCircleSize + ShadowOverhang;
+
+        CardContent.Opacity = 0;
+        _contentTranslate.Y = 8;
+        _rootScale.ScaleX = 1;
+        _rootScale.ScaleY = 1;
+
         RootGrid.BeginAnimation(
             OpacityProperty,
-            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200))
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(110))
             {
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
             });
 
-        _rootTranslate.BeginAnimation(
+        // Кружок «включается» — короткий подскок.
+        var pop = new DoubleAnimation(0.55, 1, TimeSpan.FromMilliseconds(170))
+        {
+            EasingFunction = new BackEase { Amplitude = 0.5, EasingMode = EasingMode.EaseOut }
+        };
+        _rootScale.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
+        _rootScale.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
+
+        // Кружок растягивается в панель.
+        var growEase = new SineEase { EasingMode = EasingMode.EaseOut };
+        var growBegin = TimeSpan.FromMilliseconds(60);
+        var growDuration = TimeSpan.FromMilliseconds(300);
+
+        AnimateBorderShape(
+            Card,
+            CameraCircleSize,
+            CameraCircleSize,
+            cardWidth,
+            cardHeight,
+            growBegin,
+            growDuration,
+            growEase,
+            () =>
+            {
+                if (_isPanelVisible)
+                {
+                    ResetCardShape();
+                }
+            });
+
+        AnimateBorderShape(
+            CardShadow,
+            CameraCircleSize + ShadowOverhang,
+            CameraCircleSize + ShadowOverhang,
+            cardWidth + ShadowOverhang,
+            cardHeight + ShadowOverhang,
+            growBegin,
+            growDuration,
+            growEase);
+
+        // Содержимое проявляется, когда панель уже почти раскрылась.
+        CardContent.BeginAnimation(
+            OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(190))
+            {
+                BeginTime = TimeSpan.FromMilliseconds(250),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            });
+
+        _contentTranslate.BeginAnimation(
             TranslateTransform.YProperty,
-            new DoubleAnimation(-10, 0, TimeSpan.FromMilliseconds(300))
+            new DoubleAnimation(8, 0, TimeSpan.FromMilliseconds(280))
             {
+                BeginTime = TimeSpan.FromMilliseconds(250),
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
             });
 
-        _rootScale.BeginAnimation(
-            ScaleTransform.ScaleYProperty,
-            new DoubleAnimation(0.9, 1, TimeSpan.FromMilliseconds(320))
-            {
-                EasingFunction = new BackEase { Amplitude = 0.35, EasingMode = EasingMode.EaseOut }
-            });
-
-        _rootScale.BeginAnimation(
-            ScaleTransform.ScaleXProperty,
-            new DoubleAnimation(0.96, 1, TimeSpan.FromMilliseconds(320))
+        // Ободок кружка на старте ярче — так «камера» заметнее на любом фоне.
+        _cardBorderBrush.BeginAnimation(
+            SolidColorBrush.ColorProperty,
+            new ColorAnimation(ActiveBorderColor, IdleBorderColor, TimeSpan.FromMilliseconds(420))
             {
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
             });
@@ -366,8 +450,59 @@ public partial class MainWindow : Window
             Collapse();
         }
 
-        var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(180))
+        var startWidth = Card.ActualWidth > 0 ? Card.ActualWidth : CardSlotWidth();
+        var startHeight = Card.ActualHeight > 0 ? Card.ActualHeight : CardSlotHeight();
+
+        var shadowWidth = CardShadow.ActualWidth > 0 ? CardShadow.ActualWidth : startWidth + ShadowOverhang;
+        var shadowHeight = CardShadow.ActualHeight > 0 ? CardShadow.ActualHeight : startHeight + ShadowOverhang;
+
+        // Контент гаснет, пока карточка ещё достаточно широкая: к моменту,
+        // когда остаётся кружок, внутри уже пусто. Форму стягиваем отдельно.
+        CardContent.BeginAnimation(
+            OpacityProperty,
+            new DoubleAnimation(CardContent.Opacity, 0, TimeSpan.FromMilliseconds(110))
+            {
+                BeginTime = TimeSpan.FromMilliseconds(70),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+            });
+
+        var shrinkEase = new SineEase { EasingMode = EasingMode.EaseIn };
+        var shrinkBegin = TimeSpan.FromMilliseconds(0);
+        var shrinkDuration = TimeSpan.FromMilliseconds(260);
+
+        // Ободок подсвечивается, пока форма стягивается обратно в кружок.
+        _cardBorderBrush.BeginAnimation(
+            SolidColorBrush.ColorProperty,
+            new ColorAnimation(_cardBorderBrush.Color, ActiveBorderColor, shrinkDuration)
+            {
+                BeginTime = shrinkBegin,
+                EasingFunction = shrinkEase
+            });
+
+        AnimateBorderShape(
+            Card,
+            startWidth,
+            startHeight,
+            CameraCircleSize,
+            CameraCircleSize,
+            shrinkBegin,
+            shrinkDuration,
+            shrinkEase);
+
+        AnimateBorderShape(
+            CardShadow,
+            shadowWidth,
+            shadowHeight,
+            CameraCircleSize + ShadowOverhang,
+            CameraCircleSize + ShadowOverhang,
+            shrinkBegin,
+            shrinkDuration,
+            shrinkEase);
+
+        // Кружок гаснет — и окно снова становится прозрачным для мыши.
+        var fade = new DoubleAnimation(RootGrid.Opacity, 0, TimeSpan.FromMilliseconds(110))
         {
+            BeginTime = TimeSpan.FromMilliseconds(245),
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
         };
         fade.Completed += (_, _) =>
@@ -375,25 +510,82 @@ public partial class MainWindow : Window
             if (!_isPanelVisible)
             {
                 SetClickThrough(true);
+                ResetCardShape();
             }
         };
 
         RootGrid.BeginAnimation(OpacityProperty, fade);
+    }
 
-        _rootTranslate.BeginAnimation(
-            TranslateTransform.YProperty,
-            new DoubleAnimation(0, -10, TimeSpan.FromMilliseconds(210))
-            {
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
-            });
+    /// <summary>
+    /// Анимирует размер бордера (карточки или её тени). Скругление не трогаем:
+    /// WPF сам ограничивает радиус половиной меньшей стороны, поэтому 34×34
+    /// с радиусом 22 рисуется как ровный круг, а по мере роста — как карточка.
+    /// </summary>
+    private static void AnimateBorderShape(
+        Border border,
+        double fromWidth,
+        double fromHeight,
+        double toWidth,
+        double toHeight,
+        TimeSpan beginTime,
+        TimeSpan duration,
+        IEasingFunction easing,
+        Action? completed = null)
+    {
+        var width = new DoubleAnimation(fromWidth, toWidth, duration)
+        {
+            BeginTime = beginTime,
+            EasingFunction = easing
+        };
 
-        _rootScale.BeginAnimation(
-            ScaleTransform.ScaleYProperty,
-            new DoubleAnimation(1, 0.93, TimeSpan.FromMilliseconds(210))
+        if (completed is not null)
+        {
+            width.Completed += (_, _) => completed();
+        }
+
+        border.BeginAnimation(FrameworkElement.WidthProperty, width);
+        border.BeginAnimation(
+            FrameworkElement.HeightProperty,
+            new DoubleAnimation(fromHeight, toHeight, duration)
             {
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+                BeginTime = beginTime,
+                EasingFunction = easing
             });
     }
+
+    /// <summary>Возвращает карточке «растянутый» вид на всю ширину окна.</summary>
+    private void ResetCardShape()
+    {
+        Card.BeginAnimation(FrameworkElement.WidthProperty, null);
+        Card.BeginAnimation(FrameworkElement.HeightProperty, null);
+        Card.BeginAnimation(Border.CornerRadiusProperty, null);
+        Card.ClearValue(FrameworkElement.WidthProperty);
+        Card.ClearValue(FrameworkElement.HeightProperty);
+        Card.CornerRadius = new CornerRadius(CardCornerRadius);
+
+        CardShadow.BeginAnimation(FrameworkElement.WidthProperty, null);
+        CardShadow.BeginAnimation(FrameworkElement.HeightProperty, null);
+        CardShadow.BeginAnimation(Border.CornerRadiusProperty, null);
+        CardShadow.ClearValue(FrameworkElement.WidthProperty);
+        CardShadow.ClearValue(FrameworkElement.HeightProperty);
+        CardShadow.CornerRadius = new CornerRadius(ShadowCornerRadius);
+
+        CardContent.BeginAnimation(OpacityProperty, null);
+        CardContent.Opacity = 1;
+
+        _contentTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        _contentTranslate.Y = 0;
+
+        _cardBorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
+        _cardBorderBrush.Color = IdleBorderColor;
+    }
+
+    private double CardSlotWidth() =>
+        Math.Max(CameraCircleSize, Width - Card.Margin.Left - Card.Margin.Right);
+
+    private double CardSlotHeight() =>
+        Math.Max(CameraCircleSize, CompactWindowHeight - Card.Margin.Top - Card.Margin.Bottom);
 
     private bool IsCursorInHotZone()
     {
@@ -595,6 +787,9 @@ public partial class MainWindow : Window
 
         _isExpanded = true;
         _lastInteractionUtc = DateTime.UtcNow;
+
+        // Если анимация появления ещё доигрывает — сразу отдаём карточке полный размер.
+        ResetCardShape();
 
         ExpandedPanel.BeginAnimation(OpacityProperty, null);
         ExpandedPanel.Opacity = 1;

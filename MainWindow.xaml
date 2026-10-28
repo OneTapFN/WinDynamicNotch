@@ -155,8 +155,8 @@
 
     <Grid x:Name="RootGrid" Background="Transparent">
 
-        <!-- Мягкая тень под карточкой -->
-        <Border Margin="10" CornerRadius="24" Background="#7A000000">
+        <!-- Мягкая тень под карточкой (форма анимируется вместе с карточкой) -->
+        <Border x:Name="CardShadow" Margin="10" CornerRadius="24" Background="#7A000000">
             <Border.Effect>
                 <BlurEffect Radius="18" />
             </Border.Effect>
@@ -167,8 +167,9 @@
                 CornerRadius="22"
                 Background="#F0141417"
                 BorderBrush="#1FFFFFFF"
-                BorderThickness="1">
-            <Grid>
+                BorderThickness="1"
+                ClipToBounds="True">
+            <Grid x:Name="CardContent">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="46" />
                     <RowDefinition Height="*" />
