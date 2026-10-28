@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>WinDynamicNotch</RootNamespace>
+    <AssemblyName>WinDynamicNotch</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <Version>0.0.1</Version>
+    <Product>WinDynamicNotch</Product>
+    <AssemblyTitle>WinDynamicNotch</AssemblyTitle>
+    <Description>Медиавиджет в стиле Dynamic Island для Windows</Description>
+    <Company>WinDynamicNotch</Company>
+    <Copyright>© 2026 WinDynamicNotch</Copyright>
+    <Platforms>AnyCPU</Platforms>
+    <!-- DPI настраивается через манифест (нужно для WPF); WinForms используется только для трея. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Тот же .ico используется для иконки в трее: файл вшит в сборку, чтобы работать в single-file. -->
+    <EmbeddedResource Include="Assets\app.ico" LogicalName="WinDynamicNotch.app.ico" />
+  </ItemGroup>
+
+</Project>

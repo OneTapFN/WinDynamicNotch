@@ -1,0 +1,9 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# Артефакты publish и готовые установщики
+publish/
+dist/
